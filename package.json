@@ -1,0 +1,35 @@
+{
+  "name": "qq-miniapp-ark",
+  "version": "0.1.0",
+  "description": "让第三方 QQ 机器人发出「点开直达具体页面」的小程序卡片（OneBot 11 / NapCat）",
+  "type": "module",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./bilibili": "./src/bilibili.mjs",
+    "./discover": "./src/discover.mjs"
+  },
+  "files": [
+    "src",
+    "docs",
+    "examples"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "example:bili": "node examples/bilibili.mjs",
+    "example:discover": "node examples/discover.mjs"
+  },
+  "keywords": [
+    "qq",
+    "onebot",
+    "napcat",
+    "ark",
+    "miniapp",
+    "card",
+    "bilibili"
+  ],
+  "license": "MIT",
+  "dependencies": {}
+}
