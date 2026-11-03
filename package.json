@@ -30,6 +30,15 @@
     "card",
     "bilibili"
   ],
+  "author": "DandelionYuki",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DandelionYuki/qq-miniapp-ark.git"
+  },
+  "homepage": "https://github.com/DandelionYuki/qq-miniapp-ark#readme",
+  "bugs": {
+    "url": "https://github.com/DandelionYuki/qq-miniapp-ark/issues"
+  },
   "license": "MIT",
   "dependencies": {}
 }
