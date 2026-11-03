@@ -20,12 +20,30 @@
 
 ## 装上就能发
 
+**三种装法，选一种。**
+
 ```bash
+# ① npm（推荐）
 npm i qq-miniapp-ark
 ```
 
+```bash
+# ② 直接 clone —— 零依赖，clone 下来就能跑，不用 install
+git clone https://github.com/DandelionYuki/qq-miniapp-ark.git
+cd qq-miniapp-ark
+node examples/discover.mjs          # 先验一下能不能读到你的小程序缓存
+```
+
+```bash
+# ③ 只想要那几个文件 —— 把 src/ 整个复制走，改 import 路径
+```
+
+**唯一要求：Node ≥ 22**（用了内置 `WebSocket`，不需要装 `ws`）。
+
 ```js
 import { createClient, bilibiliCard } from 'qq-miniapp-ark'
+// 或者 clone 的那份：
+// import { createClient, bilibiliCard } from './qq-miniapp-ark/src/index.mjs'
 
 const client = createClient({
   wsUrl: 'ws://127.0.0.1:3001',
@@ -89,7 +107,7 @@ node examples/discover.mjs 1109937557
 ```
 
 ```
-【1109937557 的页面路由】18 个
+【1109937557 的页面路由】30 个
   pages/index/index
   pages/video/video          ← 就是它
   pages/pgcvideo/pgcvideo
