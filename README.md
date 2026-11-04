@@ -180,16 +180,26 @@ NapCat 的 `type` 只有 `bili` 和 `weibo` 两个内置模板。**别的 App �
 
 ## 为什么不能自己搓 ark
 
-手搓 ark 发出去，QQ 会显示「**发送者版本过低**」。
+**手搓的 ark 发不出去 —— 但不是因为格式错，是因为没有签名。**
 
-因为真实卡片里带一个 `config.token`，那是**腾讯服务端签发的**，而签名接口藏在
-QQ 客户端内部（`LightAppSvc.mini_app_share.AdaptShareInfo`），没有公开入口。
+QQ 收到会显示「**发送者版本过低，无法显示内容**」。字段一个不缺、结构完全正确，
+照样这一句。唯一的区别是真实卡片里多一个 `config.token`：
+
+```json
+"config": { "type": "normal", "ctime": 1793689759, "token": "21a593fc678be3d20b82f54617bf78c4" }
+```
+
+那是**腾讯服务端对整份内容签的名字** —— 改任何一个字段签名立即失效。
+签名接口藏在 QQ 客户端内部（`LightAppSvc.mini_app_share.AdaptShareInfo`），没有公开入口。
 NapCat 是把自己塞进 QQ 进程、拿到它内部的 packet 接口才调通的。
 
 所以正确姿势只有一个：**借 QQ 自己的签名能力**，也就是 NapCat 的 API。
 
-（这条路我试过：19 种 MD5 猜 token、嫁接真实卡的 token、六种模板组合 —— 全失败。
-详见 `docs/how-it-works.md`。）
+（这条路我试过：19 种 MD5 猜 token、嫁接真实卡的 token（`retcode: 1200`）、
+六种模板组合 —— 全失败。详见 `docs/how-it-works.md`。）
+
+**顺带一个坑**：既然服务端签名不看路径对不对，那「签名成功」就 ≠ 「卡片能用」。
+路径失效时 `retcode` 照样 0，卡片长得一模一样，只是点开落首页。见上面 `verifyPath`。
 
 ---
 
