@@ -1,7 +1,7 @@
 {
   "name": "qq-miniapp-ark",
-  "version": "0.1.0",
-  "description": "让第三方 QQ 机器人发出「点开直达具体页面」的小程序卡片（OneBot 11 / NapCat）",
+  "version": "0.2.0",
+  "description": "让 QQ 机器人的小程序卡片点开直达某一页：从本机 QQ 缓存里挖出小程序的页面路径（OneBot 11 / NapCat）",
   "type": "module",
   "main": "./src/index.mjs",
   "exports": {
@@ -23,11 +23,13 @@
   },
   "keywords": [
     "qq",
+    "miniapp",
+    "miniprogram",
+    "ark",
+    "card",
     "onebot",
     "napcat",
-    "ark",
-    "miniapp",
-    "card",
+    "jumpUrl",
     "bilibili"
   ],
   "author": "DandelionYuki",

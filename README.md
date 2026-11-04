@@ -1,188 +1,227 @@
 # qq-miniapp-ark
 
-让第三方 QQ 机器人发出**点开直达具体页面**的小程序卡片。
-
-不是「能显示个卡片」——是**点开就到你想要的那一页**。
+让第三方 QQ 机器人发出的小程序卡片 **点开直达某一页**，而不是落回首页。
 
 ```
-这个你肯定喜欢
-
-┌──────────────────────────────┐
-│ [封面]  哔哩哔哩             │
-│         炸鸡腿就挺好          │
-│         哔哩哔哩 · 短视频     │  ← 点这里，直接播
-└──────────────────────────────┘
+普通链接        https://www.bilibili.com/video/BV1RExs64ELB   → 聊天里一条网址
+卡片但不填对    jumpUrl: "https://..."                        → 卡片好看，点开落首页
+这个仓库        jumpUrl: "/pages/video/video?bvid=BV1RExs64ELB" → 点开就是那个视频
 ```
 
-零依赖，Node ≥ 22，基于 OneBot 11 协议（NapCat 已验证）。
+零依赖，Node ≥ 22，通过 OneBot 11 对接 NapCat（已实测）。
 
 ---
 
-## 装上就能发
+## 先说清楚一件事
 
-**三种装法，选一种。**
+**NapCat 已经有发卡的 API 了。** `get_mini_app_ark` / `send_ark_share` 都在，所以
+「怎么把卡片发出去」不是这个仓库解决的问题。
+
+真正卡住所有人的是另一件事：
+
+> `jumpUrl` 要填的是**小程序页面路径**，不是网址。而这个路径**没有任何公开文档**。
+
+更糟的是它**填错不报错**。服务端只负责签名，完全不校验跳转路径 —— 你填
+`/pages/nonexist/xxx` 它照样返回 `retcode: 0`、照样给 token，卡片长得一模一样，
+**点开落首页**。你从接口层看不出来。
+
+所以本仓库的主体不是「封装 API」，是 **`discover`：从你自己的电脑上把路径挖出来。**
+
+那条路径一直就在那儿 —— QQ 把跑过的小程序全缓存了，里面有：
+
+- `app-config.json` — 完整的页面路由表
+- `app-service.js` — 业务代码，**里面写着这个 App 自己是怎么拼分享链接的**
+
+---
+
+## 装
 
 ```bash
-# ① npm（推荐）
 npm i qq-miniapp-ark
 ```
 
-```bash
-# ② 直接 clone —— 零依赖，clone 下来就能跑，不用 install
-git clone https://github.com/DandelionYuki/qq-miniapp-ark.git
-cd qq-miniapp-ark
-node examples/discover.mjs          # 先验一下能不能读到你的小程序缓存
-```
+需要一个跑着的 NapCat（开了 WebSocket 服务端，默认 3001）。
 
-```bash
-# ③ 只想要那几个文件 —— 把 src/ 整个复制走，改 import 路径
-```
+---
 
-**唯一要求：Node ≥ 22**（用了内置 `WebSocket`，不需要装 `ws`）。
+## 一、先挖路径（这是重点）
 
 ```js
-import { createClient, bilibiliCard } from 'qq-miniapp-ark'
-// 或者 clone 的那份：
-// import { createClient, bilibiliCard } from './qq-miniapp-ark/src/index.mjs'
+import { listCachedMiniapps, routesOf, sharePathHints, verifyPath } from 'qq-miniapp-ark'
 
-const client = createClient({
-  wsUrl: 'ws://127.0.0.1:3001',
-  token: process.env.QQ_TOKEN, // OneBot 的 access_token
-})
+// 1. 本机缓存过哪些小程序
+listCachedMiniapps()
+// [ { appId: '1109937557', name: '哔哩哔哩', version: '3', signature: '42e9ad9d…', dir: '…' },
+//   { appId: '1109561335', name: '金山文档', version: '3', signature: '2c4c11a1…', dir: '…' } ]
+
+// 2. 它有哪些页面
+routesOf('1109937557')
+// [ 'pages/index/index', 'pages/video/video', 'pages/pgcvideo/pgcvideo', … ]
+
+// 3. ★ 它自己是怎么拼分享路径的（直接就是答案）
+sharePathHints('1109937557')
+// [ '/pages/video/video?bvid=',
+//   '/pages/video/video?aid=',
+//   '/pages/pgcvideo/pgcvideo?epid=',
+//   '/pages/packages/common/search/search?kw=', … ]
+
+// 4. 这条路径现在还活着吗
+verifyPath('1109937557', '/pages/video/video?bvid=BV1RExs64ELB')
+// { ok: true, page: 'pages/video/video' }
+```
+
+第 3 步是关键。别人的 App 不会告诉你它的分享链接长什么样，**但它的代码里写着**。
+
+---
+
+## 二、发一张卡
+
+```js
+import { createClient, bilibiliCard, findBvid } from 'qq-miniapp-ark'
+
+const client = await createClient({ wsUrl: 'ws://127.0.0.1:3001' })
 
 const seg = await bilibiliCard(client, {
   bvid: 'BV1RExs64ELB',
   title: '炸鸡腿就挺好',
   desc: 'UP 主名',
   pic: 'https://i0.hdslb.com/bfs/archive/xxx.jpg',
+  verify: true,        // 发之前对一次路由表，路径没了就不发（而不是发一张落首页的卡）
 })
 
 await client.send('private', 123456789, [seg])
 ```
 
-三步：拿客户端 → 造卡片 → 发。`seg` 是普通 OneBot 消息段，可以跟文字拼在一起：
-
-```js
-await client.send('private', qq, [
-  { type: 'text', data: { text: '这个你肯定喜欢' } },
-  seg,
-])
-```
+`verify: true` 是我强烈建议打开的。**它是这套东西里唯一能对抗「静默失效」的开关** ——
+B 站哪天改版把 `pages/video/video` 删了，服务端不会告诉你，只有路由表会。
 
 ---
 
-## 关键的三件事
+## 三、B 站配方（可复现）
 
-### 1. 别自己搓 ark
-
-手搓的 `json` 段没有 `config.token`，QQ 会显示「**发送者版本过低，无法显示内容**」。
-
-那个 token 由腾讯服务端签发，本地算不出来，而且**给整份内容签名**——改任何字段都会 `retcode: 1200`。
-
-### 2. `jumpUrl` 填的是**小程序页面路径**
-
-不是网址。
+`jumpUrl` 的那条路径不是猜的，是从 `app-service.js` 里挖出来的原文：
 
 ```js
-jumpUrl: '/pages/video/video?bvid=BV1RExs64ELB'  // ✅ 点开直达
-jumpUrl: 'https://www.bilibili.com/video/BVxxx'  // ❌ 点开是首页
+"/pages/video/video?bvid=" + n
 ```
 
-### 3. 必须走「自定义 schema」分支
+同文件里还有（`sharePathHints('1109937557')` 可复现出来）：
 
-`get_mini_app_ark` 的入参是个 union。传 `type: 'bili'` 会用内置模板，那个模板把 `jumpUrl` 当网页地址处理，到不了页面。
+| 用途 | 路径 |
+|---|---|
+| 普通视频 | `/pages/video/video?bvid=BV…` |
+| 普通视频（数字 id） | `/pages/video/video?aid=…` |
+| 番剧（ep id） | `/pages/pgcvideo/pgcvideo?epid=ep…` |
+| 番剧（season id） | `/pages/pgcvideo/pgcvideo?ssid=…` |
+| 搜索 | `/pages/packages/common/search/search?kw=…` |
+| 收藏夹 | `/pages/packages/tab2/favorite/favorite?media_id=…` |
 
-不传 `type`、所有字段自己给，`jumpUrl` 才会原样进签名请求。
+`bilibiliCard()` 已经把这些封好了。想自己拼：
 
-`miniappCard()` 已经处理好了。
+```js
+import { miniappCard, BILI_APP_ID, videoPath } from 'qq-miniapp-ark'
+const seg = await miniappCard(client, {
+  appId: BILI_APP_ID,
+  title: '标题',
+  desc: '简介',
+  picUrl: '封面',
+  jumpUrl: videoPath('BV1RExs64ELB'),   // /pages/video/video?bvid=BV1RExs64ELB
+})
+```
+
+### 那九个参数里，哪些是真的
+
+`get_mini_app_ark` 自定义 schema 要 9 个参数。实测下来：
+
+| 参数 | 硬度 | 说明 |
+|---|---|---|
+| `appId` | **硬** | 空 → `retcode 1200` |
+| `sdkId` | **硬** | 空 → `retcode 1200`。目前 `V1_PC_MINISDK_99.99.99_1_APP_A` 可用 |
+| `jumpUrl` | **决定一切** | 填小程序页面路径。**填错不报错** |
+| `title` / `desc` / `picUrl` / `iconUrl` | 软 | 只影响外观 |
+| `versionId` | 软 | 实测空串/乱码/全零都能拿到 token |
+| `scene` / `templateType` / `businessType` / `verType` / `shareType` | 软 | 服务端不校验，回显也都是 0 |
+
+**别在这上面花时间**（我花过，白花）：往 `vidUrl` / `templateData` / `field20` /
+`appidRich` 里塞页面路径全部无效，还得改 NapCat 源码才传得进去 —— 而 `jumpUrl`
+本来就能透传。
 
 ---
 
-## 页面路径从哪来
+## 四、接别的小程序
 
-没有任何公开文档。**但它在你电脑上**——QQ 把跑过的小程序全缓存了，里面有完整路由表。
+NapCat 的 `type` 只有 `bili` 和 `weibo` 两个内置模板。**别的 App 得你自己给那 9 个参数。**
 
-```bash
-node examples/discover.mjs 1109937557
-```
+好消息是不难，因为真正难的那一步 —— 找路径 —— 有工具。
 
-```
-【1109937557 的页面路由】30 个
-  pages/index/index
-  pages/video/video          ← 就是它
-  pages/pgcvideo/pgcvideo
-  ...
+完整步骤写在 **[`docs/cookbook.md`](docs/cookbook.md)**，大致是：
 
-【分享路径片段（人眼读）】
-  "/pages/video/video?bvid="
-```
+1. 先在 QQ 里打开目标小程序（必须打开过一次，缓存才有）
+2. `listCachedMiniapps()` 认出它的 appId
+3. `sharePathHints(appId, { keyword: 'share' })` 看它怎么拼路径
+4. 照抄那个形状，填进 `jumpUrl`
+5. `verifyPath()` 确认，然后发
 
-详见 [docs/miniapp-routes.md](docs/miniapp-routes.md)。
+---
+
+## ⚠️ 这个项目天然有寿命
+
+三件事得先说清楚：
+
+1. **它解决不了「App 改版导致路径失效」，只能让你早点知道。** 这是可观测性，不是稳定性。
+2. **服务端现在不校验路径，不代表以后也不校验。** 腾讯随时可以补上。
+3. **`sdkId` 是猜的通用值**，现在能用，不保证永远。
+
+**这是对当前 QQ 客户端行为的记录与工具化，不是官方支持的接口，随时可能失效。**
+
+如果哪天它不能用了，`verifyPath()` 会是第一个告诉你的地方。
+
+---
+
+## 为什么不能自己搓 ark
+
+手搓 ark 发出去，QQ 会显示「**发送者版本过低**」。
+
+因为真实卡片里带一个 `config.token`，那是**腾讯服务端签发的**，而签名接口藏在
+QQ 客户端内部（`LightAppSvc.mini_app_share.AdaptShareInfo`），没有公开入口。
+NapCat 是把自己塞进 QQ 进程、拿到它内部的 packet 接口才调通的。
+
+所以正确姿势只有一个：**借 QQ 自己的签名能力**，也就是 NapCat 的 API。
+
+（这条路我试过：19 种 MD5 猜 token、嫁接真实卡的 token、六种模板组合 —— 全失败。
+详见 `docs/how-it-works.md`。）
 
 ---
 
 ## API
 
-### `createClient({ wsUrl, token, timeoutMs })`
+<details>
+<summary>完整导出</summary>
 
-极简 OneBot 11 客户端。`call(action, params, opts)` / `send(kind, target, message)` / `close()`。
+**发现**
 
-如果你已经有自己的协议层，不需要这个 —— 只要有个带 `call()` 的对象就行。
+- `candidateDirs()` — 可能存放缓存的位置
+- `listCachedMiniapps(dirs?)` — 本机缓存的小程序 `{appId, name, version, signature, dir}`
+- `routesOf(appId, dirs?)` — 页面路由数组（主包 + 分包，去重）
+- `sharePathHints(appId, {keyword, limit}, dirs?)` — 从业务代码里挖分享路径
+- `verifyPath(appId, path, dirs?)` — `{ok, page, reason?, suggestions?}`
+- `report(appId?, dirs?)` — 一份人看的报告
 
-### `miniappCard(client, card, opts)`
+**发卡**
 
-| 字段 | 必填 | 说明 |
-|---|---|---|
-| `appId` | ✅ | 小程序 appid |
-| `versionId` | ✅ | 小程序版本标识 |
-| `jumpUrl` | ✅ | **页面路径** |
-| `title` | | 卡片标题 |
-| `desc` | | 描述 |
-| `picUrl` | | 封面（建议 16:9） |
-| `iconUrl` | | 小程序图标 |
+- `createClient({wsUrl, token, timeoutMs})` — OneBot 11 客户端
+- `miniappCard(client, card, opts?)` — 底层，返回一个消息段
+- `inspectCard(client, fields)` — 只看服务端返回什么，不发送
 
-返回 OneBot 消息段；**拿不到签名返回 `null`** —— 调用方应该退回纯文本，别硬发。
+**B 站**
 
-### `bilibiliCard(client, video)`
+- `BILI_APP_ID` / `BILI_VERSION_ID` / `BILI_ICON`
+- `videoPath(bvid)` / `bangumiPath(epId)` / `searchPath(keyword)`
+- `verifyBilibiliPath(path)`
+- `bilibiliCard(client, {bvid, title, desc, pic, verify})`
+- `findBvid(text)` — 从文本/短链里抠 BV 号
 
-B 站预设。`{ bvid, title, desc, pic }`。
-
-### `inspectCard(seg)`
-
-调试用，打印卡片里的 `app` / `token` / `title` / `jumpUrl`。**`token` 有值就是签名成功**。
-
-### `report(appId)` / `routesOf(appId)` / `sharePathHints(appId)`
-
-路径发现工具，见 `src/discover.mjs`。
-
----
-
-## 踩坑记录
-
-完整的实验过程（包括十几种失败的路）写在 [docs/how-it-works.md](docs/how-it-works.md)。
-
-挑三条最值得知道的：
-
-- **`withShareTicket` 是必填字符串**，漏了报 `retcode=1400 Schema compilation error: Expected union value`。别以为缺的是 `sdkId`
-- **`qqdocurl` 是空的完全不影响直达**，别盯着它调
-- **改真实卡的 token 会 `retcode: 1200`**，token 跟内容绑死，一分钟就能验证完，别在这上面花时间
-
----
-
-## 限制
-
-- 只验证过 **B 站**（`1109937557`）。别的小程序照同样方法挖路径，`appId` / `versionId` 要自己找
-- `versionId` 会随小程序版本变。卡片突然不显示了，先核对它
-- 小程序更新后页面路径可能改名，重跑 `discover` 就行
-- 这是对 QQ 协议的非公开用法，**随时可能失效**。自己承担风险，别拿去做骚扰或营销
-
----
-
-## 环境
-
-- Node ≥ 22（用了内置 `WebSocket`）
-- NapCat 4.18.x 已验证（`get_mini_app_ark` 是 NapCat 的扩展 action，标准 OneBot 11 没有）
-- 理论上任何实现了 `get_mini_app_ark` 的 OneBot 实现都行
+</details>
 
 ---
 
