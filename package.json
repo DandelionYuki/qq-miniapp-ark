@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "qq-miniapp-ark",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "让 QQ 机器人的小程序卡片点开直达某一页：从本机 QQ 缓存里挖出小程序的页面路径（OneBot 11 / NapCat）",
   "type": "module",
   "main": "./src/index.mjs",
